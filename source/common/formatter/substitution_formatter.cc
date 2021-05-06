@@ -363,6 +363,7 @@ FormatterProviderPtr SubstitutionFormatParser::parseBuiltinCommand(const std::st
   static constexpr absl::string_view FILTER_STATE_TOKEN{"FILTER_STATE("};
   static constexpr absl::string_view PLAIN_SERIALIZATION{"PLAIN"};
   static constexpr absl::string_view TYPED_SERIALIZATION{"TYPED"};
+  static constexpr absl::string_view ENV_VAR_TOKEN{"ENVIRONMENT_VARIABLE"};
 
   if (absl::StartsWith(token, "REQ(")) {
     std::string main_header, alternative_header;
@@ -1376,6 +1377,36 @@ ProtobufWkt::Value SystemTimeFormatter::formatValue(
     absl::string_view local_reply_body) const {
   return ValueUtil::optionalStringValue(
       format(request_headers, response_headers, response_trailers, stream_info, local_reply_body));
+}
+
+EnvVarFormatter::EnvVarFormatter(const std::string& key, absl::optional<size_t> max_length)
+    : key_(key), max_length_(max_length) {}
+
+absl::optional<std::string> EnvVarFormatter::format(const Http::RequestHeaderMap&,
+                                                    const Http::ResponseHeaderMap&,
+                                                    const Http::ResponseTrailerMap&,
+                                                    const StreamInfo::StreamInfo&,
+                                                    absl::string_view) const {
+  const char* env_val = std::getenv(key_.c_str());
+  if (env_val == nullptr) {
+    return {};
+  }
+  std::string val = env_val;
+  if (val.empty()) {
+    return {};
+  }
+  truncate(val, max_length_);
+
+  return val;
+}
+
+ProtobufWkt::Value EnvVarFormatter::formatValue(const Http::RequestHeaderMap& request_headers,
+                                                const Http::ResponseHeaderMap& response_headers,
+                                                const Http::ResponseTrailerMap& response_trailers,
+                                                const StreamInfo::StreamInfo& stream_info,
+                                                absl::string_view local_reply_body) const {
+  return ValueUtil::optionalStringValue(
+      format(request_headers, response_headers, response_trailers, stream_info, local_reply_body));                                                  
 }
 
 } // namespace Formatter
