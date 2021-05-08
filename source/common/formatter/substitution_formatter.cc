@@ -363,7 +363,7 @@ FormatterProviderPtr SubstitutionFormatParser::parseBuiltinCommand(const std::st
   static constexpr absl::string_view FILTER_STATE_TOKEN{"FILTER_STATE("};
   static constexpr absl::string_view PLAIN_SERIALIZATION{"PLAIN"};
   static constexpr absl::string_view TYPED_SERIALIZATION{"TYPED"};
-  static constexpr absl::string_view ENV_VAR_TOKEN{"ENVIRONMENT_VARIABLE"};
+  static constexpr absl::string_view ENV_VAR_TOKEN{"ENVIRONMENT_VARIABLE("};
 
   if (absl::StartsWith(token, "REQ(")) {
     std::string main_header, alternative_header;
@@ -424,6 +424,14 @@ FormatterProviderPtr SubstitutionFormatParser::parseBuiltinCommand(const std::st
     const bool serialize_as_string = serialize_type == PLAIN_SERIALIZATION;
 
     return std::make_unique<FilterStateFormatter>(key, max_length, serialize_as_string);
+  } else if (absl::StartsWith(token, ENV_VAR_TOKEN)) {
+    std::string main_key, alternative_key;
+    absl::optional<size_t> max_length;
+    const size_t start = ENV_VAR_TOKEN.size();
+    // reuse parseCommandHeader since their format is the same
+    parseCommandHeader(token, start, main_key, alternative_key, max_length);
+
+    return std::make_unique<EnvVarFormatter>(main_key, alternative_key, max_length);
   } else if (absl::StartsWith(token, "START_TIME")) {
     return std::make_unique<StartTimeFormatter>(token);
   } else if (absl::StartsWith(token, "DOWNSTREAM_PEER_CERT_V_START")) {
@@ -1379,22 +1387,23 @@ ProtobufWkt::Value SystemTimeFormatter::formatValue(
       format(request_headers, response_headers, response_trailers, stream_info, local_reply_body));
 }
 
-EnvVarFormatter::EnvVarFormatter(const std::string& key, absl::optional<size_t> max_length)
-    : key_(key), max_length_(max_length) {}
+EnvVarFormatter::EnvVarFormatter(const std::string& main_key, const std::string& alternative_key,
+                                 absl::optional<size_t> max_length)
+    : main_key_(main_key), alternative_key_(alternative_key), max_length_(max_length) {}
 
 absl::optional<std::string> EnvVarFormatter::format(const Http::RequestHeaderMap&,
                                                     const Http::ResponseHeaderMap&,
                                                     const Http::ResponseTrailerMap&,
                                                     const StreamInfo::StreamInfo&,
                                                     absl::string_view) const {
-  const char* env_val = std::getenv(key_.c_str());
-  if (env_val == nullptr) {
+  const char* env_val = std::getenv(main_key_.c_str());
+  if (!env_val && !alternative_key_.empty()) {
+    env_val = std::getenv(alternative_key_.c_str());
+  }
+  if (!env_val) {
     return {};
   }
-  std::string val = env_val;
-  if (val.empty()) {
-    return {};
-  }
+  std::string val(env_val);
   truncate(val, max_length_);
 
   return val;

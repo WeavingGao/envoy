@@ -586,7 +586,8 @@ public:
  */
 class EnvVarFormatter : public FormatterProvider {
 public:
-  EnvVarFormatter(const std::string& key, absl::optional<size_t> max_length);
+  EnvVarFormatter(const std::string& main_key, const std::string& alternative_key, 
+                  absl::optional<size_t> max_length);
 
   // FormatterProvider
   absl::optional<std::string> format(const Http::RequestHeaderMap&, const Http::ResponseHeaderMap&,
@@ -597,7 +598,8 @@ public:
                                  absl::string_view) const override;
 
 private:
-  std::string key_;
+  std::string main_key_;
+  std::string alternative_key_;
   absl::optional<size_t> max_length_;
 };
 
